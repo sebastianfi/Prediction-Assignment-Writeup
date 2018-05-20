@@ -1,0 +1,133 @@
+---
+title: "Prediction model"
+author: "S I"
+date: "May 20, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Download data
+
+```{r Data download}
+url_train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+dat_train <- "pml-training.csv"
+download.file(url=url_train, destfile=dat_train, method = "auto")
+url_test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+dat_test <- "pml-testing.csv"
+download.file(url=url_test, destfile=dat_test, method = "auto")
+```
+
+## Import and clean data.
+
+We perform mainly the following steps:
+Import data and convert empty values to NA.
+Check number and percentage of NAs in test set.
+Remove columns with only NAs in test set. We are left with two datasets that have 60 variables, instead of 160.
+Check to see that colnames are the same in the two new datasets
+Remove id columns from the new datasets
+
+```{r Data preparation, echo=TRUE}
+df_train <- read.csv(dat_train, na.strings=c("NA",""), header=TRUE)
+colnames_train <- colnames(df_train)
+df_test <- read.csv(dat_test, na.strings=c("NA",""), header=TRUE)
+colnames_test <- colnames(df_test)
+colSums(!is.na(df_test))
+colMeans(is.na(df_test))*100
+df_testNoNA <- df_test[, colSums(is.na(df_test)) != nrow(df_test)]
+df_trainSub <- df_train[, colSums(is.na(df_test)) != nrow(df_test)]
+dim(df_testNoNA)
+dim(df_trainSub)
+colnames_trainSub <- colnames(df_trainSub)
+colnames_testNoNA <- colnames(df_testNoNA)
+setdiff(colnames_testNoNA,colnames_trainSub)
+setdiff(colnames_trainSub,colnames_testNoNA)
+df_testTrim<- df_testNoNA[,c(-1, -60)]
+df_trainTrim<- df_trainSub[,-1]
+```
+
+## Data processing and model
+For this stage we perform a series of steps as follows:
+Split the data 65% for training and 35% for testing. Then use the training set (df_trainTrim) as the source for the new training and testing sets and leave the test set (df_testTrim) untouched.
+
+
+We use caret package to perform principle component analysis, use decision tree method and then Random Fores (we draw also some relevant plots)
+
+```{r Packages, eval=TRUE, include=TRUE}
+library(lattice)
+library(ggplot2)
+library(caret)
+```
+
+
+```{r Data processing and model}
+
+set.seed(54321)
+
+TrainSub <- createDataPartition(y=df_trainTrim$classe, p=0.65, list=FALSE)
+myTraining <- df_trainTrim[TrainSub, ]
+myTesting <- df_trainTrim[-TrainSub, ]
+dim(myTraining)
+dim(myTesting)
+
+nsv<- nearZeroVar(df_trainTrim, saveMetrics = TRUE)
+nsv
+
+M <- abs(cor(df_trainTrim[,c(-1,-4,-5,-59)]))
+diag(M) <- 0
+which(M>0.8, arr.ind = TRUE)
+
+preProc <- preProcess(df_trainTrim[,c(-1,-4,-5,-59)], method = "pca", pcaComp = 2)
+PC<-predict(preProc,df_trainTrim[,c(-1,-4,-5,-59)])
+plot(PC[,1],PC[,2], col=df_trainTrim$classe)
+#Plot(PC[,1],PC[,2], col=df_trainTrim$user_name)
+```
+
+```{r Packages2, eval=TRUE, include=FALSE}
+library(rattle)
+library(rpart)
+library(randomForest)
+```
+
+```{r Data processing and model2}
+modDT <- rpart(classe ~ ., data=myTraining, method="class")
+predDT <- predict(modDT, myTesting, type = "class")
+#fancyRpartPlot(modDT)
+
+cfmDT<-confusionMatrix(predDT, myTesting$classe)
+cfmDT
+(accuracy_dt <- cfmDT$overall[1])
+
+modRF <- randomForest(classe ~ ., data=myTraining)
+predRF <- predict(modRF, myTesting, type = "class")
+cfmRF<-confusionMatrix(predRF, myTesting$classe)
+cfmRF
+plot(modRF)
+(accuracy_rf <- cfmRF$overall[1])
+
+predFinalDT <- predict(modDT, df_testTrim, type="class")
+predFinalDT
+
+# We correct the incosistencies
+
+testing <- rbind(myTraining[21, -59] , df_testTrim)
+testing <- testing[-1,]
+
+```
+
+## Quiz answer generation
+
+```{r Packages3, eval=FALSE}
+library(compare)
+```
+
+```{r Quiz answers}
+library(utils)
+predFinalRF <- predict(modRF, testing, type="class")
+predFinalRF
+```
+
+
+
